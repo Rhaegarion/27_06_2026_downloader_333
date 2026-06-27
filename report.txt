@@ -1,0 +1,185 @@
+
+
+Update report.py with map loading and LLM name extraction
+bash
+
+cat > /home/claude/intelligence_app/backend/api/report.py << 'PYEOF'
+"""
+report.py — /api/report endpoints with OSINT + LLM name extraction + map image.
+"""
+import base64
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
+
+from backend.core.database import get_db
+from backend.models.schemas import ReportRequest, ReportResponse
+from backend.services.report_service import generate_report
+from backend.services import session_manager, rag_service
+from backend.services.osint_service import (
+    lookup_target,
+    extract_contacts_from_records,
+    enrich_contacts,
+    llm_extract_names,
+    _all_gists_from_records,
+)
+from loguru import logger
+
+router = APIRouter(prefix="/api/report", tags=["Report"])
+
+
+def _load_map_image(identifier: str) -> Optional[str]:
+    """
+    Load map image from D:/map/{identifier}_map.png
+    Returns base64 data URI or None.
+    """
+    # Sanitise identifier for filename
+    safe_id = "".join(c if c.isalnum() or c in "-_+." else "_" for c in identifier)
+    map_path = Path(f"D:/map/{safe_id}_map.png")
+
+    if not map_path.exists():
+        # Also try without special chars
+        alt_path = Path(f"D:/map/{identifier}_map.png")
+        if alt_path.exists():
+            map_path = alt_path
+        else:
+            logger.info(f"[Map] No map image found at {map_path}")
+            return None
+
+    try:
+        data = map_path.read_bytes()
+        b64  = base64.b64encode(data).decode("utf-8")
+        logger.info(f"[Map] Loaded map image: {map_path}")
+        return f"data:image/png;base64,{b64}"
+    except Exception as e:
+        logger.warning(f"[Map] Failed to load map: {e}")
+        return None
+
+
+class ReportResponseExtended(BaseModel):
+    success:       bool
+    session_id:    str
+    report_path:   str
+    report_text:   str
+    summary_stats: dict
+    message:       str
+    map_image_b64: Optional[str] = None   # base64 map PNG
+
+
+@router.post("/generate", response_model=ReportResponseExtended)
+async def generate_intelligence_report(
+    req: ReportRequest,
+    db: Session = Depends(get_db),
+):
+    session = session_manager.get_session(req.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if not session.records:
+        raise HTTPException(status_code=400, detail="No records in session.")
+
+    # ── OSINT enrichment + LLM name extraction ─────────────────
+    target_osint      = None
+    enriched_contacts = []
+
+    try:
+        target_osint = lookup_target(db, session.identifier)
+
+        contacts = extract_contacts_from_records(session.records)
+
+        # Build all gists text for LLM name extraction
+        all_gists = _all_gists_from_records(session.records)
+
+        # Ask LLM to identify names for unknown numbers
+        logger.info("[OSINT] Running LLM name extraction for unknown contacts...")
+        contacts = await llm_extract_names(contacts, all_gists)
+
+        enriched_contacts = enrich_contacts(db, contacts)
+
+    except Exception as e:
+        logger.warning(f"OSINT enrichment failed (continuing): {e}")
+        import traceback; traceback.print_exc()
+
+    # ── Load map image ─────────────────────────────────────────
+    map_image_b64 = _load_map_image(session.identifier)
+
+    # ── Generate report ────────────────────────────────────────
+    try:
+        result = await generate_report(
+            records=session.records,
+            identifier=session.identifier,
+            folder_path=session.folder_path,
+            target_osint=target_osint,
+            enriched_contacts=enriched_contacts,
+            map_image_b64=map_image_b64,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+    session_manager.update_session(
+        req.session_id,
+        report_text=result["report_text"],
+        report_path=result["report_path"],
+        analytics=result["summary_stats"],
+        has_report=True,
+        docx_path=result.get("docx_path"),
+    )
+
+    # ── Build RAG index ────────────────────────────────────────
+    records_text = "\n".join(
+        f"[{r.date} {r.start_time}] "
+        f"{r.calling_party or r.calling_no} -> {r.called_party or r.called_no} | "
+        f"Subject: {r.call_subject or ''} | Gist: {(r.msg_gist or '')[:200]}"
+        for r in session.records
+    )
+    rag = rag_service.get_or_create_session(req.session_id, session.folder_path)
+    rag.build_from_records_and_report(
+        records_text=records_text,
+        report_text=result["report_text"],
+        analytics=result["summary_stats"],
+    )
+
+    return ReportResponseExtended(
+        success=True,
+        session_id=req.session_id,
+        report_path=result["report_path"],
+        report_text=result["report_text"],
+        summary_stats=result["summary_stats"],
+        message="Intelligence report generated successfully.",
+        map_image_b64=map_image_b64,
+    )
+
+
+@router.get("/download/{session_id}")
+async def download_report(session_id: str):
+    session = session_manager.get_session(session_id)
+    if not session or not session.report_path:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return FileResponse(session.report_path, filename="intelligence_report.txt",
+                        media_type="text/plain")
+
+
+@router.get("/download-docx/{session_id}")
+async def download_docx(session_id: str):
+    session   = session_manager.get_session(session_id)
+    docx_path = getattr(session, "docx_path", None)
+    if not session or not docx_path:
+        raise HTTPException(status_code=404, detail="DOCX not found.")
+    return FileResponse(docx_path, filename="intelligence_report.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+@router.get("/download-excel/{session_id}")
+async def download_excel(session_id: str):
+    session = session_manager.get_session(session_id)
+    if not session or not session.excel_path:
+        raise HTTPException(status_code=404, detail="Excel not found")
+    return FileResponse(session.excel_path, filename="call_records.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+PYEOF
+echo "done"
+Output
+
+done

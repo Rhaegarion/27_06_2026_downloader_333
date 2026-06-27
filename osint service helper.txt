@@ -1,0 +1,18 @@
+
+
+Append _all_gists_from_records helper to osint_service
+bash
+
+cat >> /home/claude/intelligence_app/backend/services/osint_service.py << 'PYEOF'
+
+
+def _all_gists_from_records(records: list) -> str:
+    """Build concatenated gists text for LLM name extraction."""
+    return "\n".join(
+        f"[Event {r.event_id} | {r.date} | "
+        f"{r.calling_no or ''} -> {r.called_no or ''}]: {r.msg_gist}"
+        for r in records if r.msg_gist
+    )
+PYEOF
+echo "done"
+Output

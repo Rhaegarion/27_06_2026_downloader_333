@@ -1,0 +1,256 @@
+
+
+Rewrite osint_service with LLM name extraction and null-name filtering
+bash
+
+cat > /home/claude/intelligence_app/backend/services/osint_service.py << 'PYEOF'
+"""
+osint_service.py — OSINT table lookups + LLM-assisted name extraction.
+"""
+import os
+import base64
+import json
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from loguru import logger
+
+# ── Table / column config ─────────────────────────────────────────
+OSINT_TABLE  = "osint_table"
+COL_NAME     = "Target_Name"
+COL_PHONE    = "Phone_no"
+COL_EMAIL    = "Email_id"
+COL_COUNTRY  = "Country"
+COL_ADDRESS  = "Address"
+COL_DOB      = "Date_Of_Birth"
+COL_PHOTO    = "Other_photo"
+
+# Names that mean "unknown" — don't show these
+_NULL_NAMES = {
+    "", "unknown", "not known", "n/a", "na", "none",
+    "null", "subject", "-", "--", "not available",
+}
+
+
+def _is_null_name(name: Optional[str]) -> bool:
+    return not name or name.strip().lower() in _NULL_NAMES
+
+
+def _load_photo_base64(photo_path: str) -> Optional[str]:
+    if not photo_path or not photo_path.strip():
+        return None
+    path = Path(photo_path.strip())
+    if not path.exists():
+        logger.warning(f"[OSINT] Photo not found: {path}")
+        return None
+    try:
+        ext  = path.suffix.lower().lstrip(".")
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "png": "image/png",  "gif":  "image/gif",
+                "webp": "image/webp"}.get(ext, "image/jpeg")
+        b64  = base64.b64encode(path.read_bytes()).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
+    except Exception as e:
+        logger.warning(f"[OSINT] Photo load failed {path}: {e}")
+        return None
+
+
+def _query_one(db: Session, sql: str, params: dict) -> Optional[Dict]:
+    """Run a SELECT, return first row as dict or None."""
+    try:
+        res  = db.execute(text(sql), params)
+        cols = list(res.keys())
+        row  = res.fetchone()
+        if not row:
+            return None
+        record = dict(zip(cols, row))
+        record["_photo_b64"] = _load_photo_base64(record.get(COL_PHOTO, ""))
+        return record
+    except Exception as e:
+        logger.error(f"[OSINT] Query failed: {e}")
+        return None
+
+
+def lookup_by_phone(db: Session, phone: str) -> Optional[Dict]:
+    return _query_one(
+        db,
+        f"SELECT * FROM {OSINT_TABLE} WHERE {COL_PHONE} = :v LIMIT 1",
+        {"v": phone},
+    )
+
+
+def lookup_by_name(db: Session, name: str) -> Optional[Dict]:
+    if _is_null_name(name):
+        return None
+    return _query_one(
+        db,
+        f"SELECT * FROM {OSINT_TABLE} WHERE {COL_NAME} LIKE :v LIMIT 1",
+        {"v": f"%{name.strip()}%"},
+    )
+
+
+def lookup_target(db: Session, identifier: str) -> Optional[Dict]:
+    rec = lookup_by_phone(db, identifier)
+    if rec:
+        logger.info(f"[OSINT] Target found by phone: {identifier}")
+        return rec
+    rec = lookup_by_name(db, identifier)
+    if rec:
+        logger.info(f"[OSINT] Target found by name: {identifier}")
+        return rec
+    logger.info(f"[OSINT] No OSINT record for: {identifier}")
+    return None
+
+
+def format_osint_for_prompt(record: Optional[Dict]) -> str:
+    if not record:
+        return "No OSINT data available."
+    lines = []
+    for col in [COL_NAME, COL_PHONE, COL_EMAIL, COL_COUNTRY, COL_ADDRESS, COL_DOB]:
+        val = record.get(col)
+        if val:
+            lines.append(f"  {col}: {val}")
+    return "\n".join(lines) if lines else "No OSINT data available."
+
+
+def extract_contacts_from_records(records: list) -> List[Dict]:
+    """Extract unique contacts, tracking both sides of each call."""
+    from collections import defaultdict
+    contact_map: Dict[str, Dict] = {}
+
+    for r in records:
+        for key, name, phone, country in [
+            (r.calling_no or r.calling_party,
+             r.calling_party, r.calling_no, r.calling_country),
+            (r.called_no or r.called_party,
+             r.called_party, r.called_no, r.called_country),
+        ]:
+            if not key or _is_null_name(key):
+                continue
+            if key not in contact_map:
+                contact_map[key] = {
+                    "name":       name or "",
+                    "phone":      phone or "",
+                    "country":    country or "",
+                    "call_count": 0,
+                    "gist_mentions": [],
+                }
+            contact_map[key]["call_count"] += 1
+            # Collect gists that might mention this contact
+            if r.msg_gist and (
+                (name and name.lower() in r.msg_gist.lower()) or
+                (phone and phone in (r.msg_gist or ""))
+            ):
+                contact_map[key]["gist_mentions"].append(r.msg_gist[:200])
+
+    return sorted(contact_map.values(), key=lambda x: x["call_count"], reverse=True)
+
+
+async def llm_extract_names(
+    contacts: List[Dict],
+    all_gists: str,
+) -> List[Dict]:
+    """
+    Use Gemma to try to identify real names for contacts whose names
+    are unknown/null, by searching through the call gists.
+    Returns the contacts list with 'llm_name' field added where found.
+    """
+    # Only process contacts with null/unknown names — skip those already named
+    unknown_contacts = [
+        c for c in contacts
+        if _is_null_name(c.get("name")) or not c.get("name")
+    ]
+
+    if not unknown_contacts:
+        return contacts  # All contacts already have names
+
+    # Build a compact list of unknown phone numbers
+    unknown_phones = [
+        c.get("phone", "").strip()
+        for c in unknown_contacts
+        if c.get("phone", "").strip()
+    ]
+
+    if not unknown_phones:
+        return contacts
+
+    phones_list = "\n".join(f"- {p}" for p in unknown_phones[:20])
+
+    prompt = f"""You are an intelligence analyst. Below are call gists (summaries) from intercepted calls.
+Some phone numbers appear in the records but their names are not in the call logs.
+Search through the gists below and try to identify the real name of each phone number if it is mentioned.
+
+Phone numbers to identify (these have no known name):
+{phones_list}
+
+Call gists (search these for name mentions):
+{all_gists[:3000]}
+
+INSTRUCTIONS:
+- For each phone number, if you can find a name mentioned in association with that number in the gists, return it.
+- If you cannot find a name, return null for that number.
+- Return ONLY valid JSON, no explanation, no markdown.
+- Format: {{"phone_number": "Name Found"}} or {{"phone_number": null}} if not found.
+- Example: {{"+97712345678": "Ahmed Al-Farsi", "+97798765432": null}}
+
+JSON response:"""
+
+    try:
+        from backend.services.llm_service import llm_generate
+        response = await llm_generate(prompt, max_tokens=500)
+
+        # Extract JSON from response
+        import re
+        match = re.search(r"\{[\s\S]+\}", response)
+        if not match:
+            return contacts
+
+        name_map = json.loads(match.group(0))
+
+        # Apply extracted names back to contacts
+        for c in contacts:
+            phone = c.get("phone", "").strip()
+            if phone in name_map and name_map[phone]:
+                extracted = str(name_map[phone]).strip()
+                if not _is_null_name(extracted):
+                    c["llm_name"] = extracted
+                    logger.info(f"[OSINT] LLM identified {phone} as '{extracted}'")
+
+    except Exception as e:
+        logger.warning(f"[OSINT] LLM name extraction failed: {e}")
+
+    return contacts
+
+
+def enrich_contacts(db: Session, contacts: List[Dict]) -> List[Dict]:
+    """Enrich contacts with OSINT table data."""
+    enriched = []
+    for c in contacts:
+        osint = None
+
+        phone = c.get("phone", "").strip()
+        if phone:
+            osint = lookup_by_phone(db, phone)
+
+        if not osint:
+            # Try by call-record name
+            name = c.get("name", "").strip()
+            if not _is_null_name(name):
+                osint = lookup_by_name(db, name)
+
+        if not osint:
+            # Try by LLM-extracted name
+            llm_name = c.get("llm_name", "").strip()
+            if not _is_null_name(llm_name):
+                osint = lookup_by_name(db, llm_name)
+
+        enriched.append({**c, "osint": osint})
+
+    return enriched
+PYEOF
+echo "done"
+Output
+
+done

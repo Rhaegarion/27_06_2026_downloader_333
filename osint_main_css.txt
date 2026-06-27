@@ -1,0 +1,119 @@
+
+bash
+
+cat >> /home/claude/intelligence_app/frontend/assets/css/osint_profile.css << 'CSSEOF'
+
+/* ══════════════════════════════════════════════════════════════
+   PHOTO ZOOM — larger contact photos with click/hover overlay
+══════════════════════════════════════════════════════════════ */
+
+/* Larger photo in grid */
+.osint-contact-photo {
+  width: 60px !important;
+  height: 72px !important;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform .2s, box-shadow .2s;
+}
+.osint-contact-photo:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  border-color: var(--accent);
+}
+.osint-contact-photo-placeholder {
+  width: 60px !important;
+  height: 72px !important;
+  font-size: 24px !important;
+}
+
+/* Adjust photo cell width to fit larger image */
+.osint-grid-header,
+.osint-contact-row {
+  grid-template-columns: 36px 74px 1fr 1fr 1fr 52px 1fr 1fr 1fr !important;
+}
+
+/* ── Photo lightbox overlay ─────────────────────────────────── */
+.photo-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.85);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadein .2s ease;
+  cursor: pointer;
+}
+.photo-lightbox img {
+  max-width: 80vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border-light);
+  box-shadow: 0 20px 60px rgba(0,0,0,.8);
+}
+.photo-lightbox-caption {
+  position: absolute;
+  bottom: 40px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  text-align: center;
+}
+.photo-lightbox-close {
+  position: absolute;
+  top: 24px; right: 32px;
+  font-size: 28px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.photo-lightbox-close:hover { color: var(--danger); }
+
+/* ══════════════════════════════════════════════════════════════
+   MAP IMAGE SECTION
+══════════════════════════════════════════════════════════════ */
+.map-section {
+  margin-top: 24px;
+  animation: fadein .4s ease;
+}
+.map-section-header {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.map-image-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  text-align: center;
+}
+.map-image {
+  width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  display: block;
+  cursor: zoom-in;
+  transition: opacity .2s;
+}
+.map-image:hover { opacity: .92; }
+.map-not-found {
+  padding: 32px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+CSSEOF
+echo "done"
+Output
+

@@ -1,0 +1,370 @@
+
+bash
+
+cat > /home/claude/intelligence_app/frontend/assets/js/osint_ui.js << 'JSEOF'
+/**
+ * osint_ui.js — OSINT profile, contacts table, frequency list, map display.
+ * Photos are larger with click-to-zoom lightbox.
+ * Map image shown after report generation.
+ *
+ * Requires in index.html:
+ *   <div id="osint-profile-section"></div>
+ *   <div id="osint-freq-section"></div>
+ *   <div id="osint-contacts-section"></div>
+ *   <div id="map-section"></div>   ← add below report-doc div
+ *
+ * Called from app.js:
+ *   OsintUI.load(sessionId)          — after fetch
+ *   OsintUI.showMap(base64Uri)       — after report generation
+ *   OsintUI.clear()                  — on new fetch
+ */
+
+(function () {
+
+  window.OsintUI = {
+    load:    loadOsintData,
+    showMap: showMapImage,
+    clear:   clearAll,
+  };
+
+  // ── Lightbox ─────────────────────────────────────────────────
+  function openLightbox(src, caption) {
+    var lb = document.createElement("div");
+    lb.className = "photo-lightbox";
+
+    var close = document.createElement("div");
+    close.className   = "photo-lightbox-close";
+    close.textContent = "✕";
+    close.addEventListener("click", function (e) { e.stopPropagation(); lb.remove(); });
+
+    var img = document.createElement("img");
+    img.src = src;
+    img.alt = caption || "";
+
+    var cap = document.createElement("div");
+    cap.className   = "photo-lightbox-caption";
+    cap.textContent = caption || "";
+
+    lb.appendChild(close);
+    lb.appendChild(img);
+    lb.appendChild(cap);
+    lb.addEventListener("click", function () { lb.remove(); });
+    document.body.appendChild(lb);
+  }
+
+  // ── Main loader ───────────────────────────────────────────────
+  async function loadOsintData(sessionId) {
+    if (!sessionId) return;
+    try {
+      var [profile, contacts] = await Promise.all([
+        Api.osintTarget(sessionId).catch(function () { return { found: false }; }),
+        Api.osintContacts(sessionId).catch(function () { return []; }),
+      ]);
+      renderProfileCard(profile);
+      renderFrequencyList(contacts);
+      renderContactsTable(contacts);
+    } catch (e) {
+      console.warn("OSINT UI load failed:", e.message);
+    }
+  }
+
+  function clearAll() {
+    ["osint-profile-section","osint-freq-section","osint-contacts-section","map-section"]
+      .forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = "";
+      });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // MAP IMAGE
+  // ══════════════════════════════════════════════════════════════
+  function showMapImage(b64Uri) {
+    var section = document.getElementById("map-section");
+    if (!section) return;
+    section.innerHTML = "";
+
+    var wrap = document.createElement("div");
+    wrap.className = "map-section";
+
+    var hdr = document.createElement("div");
+    hdr.className   = "map-section-header";
+    hdr.textContent = "GEOGRAPHICAL ACTIVITY MAP";
+    wrap.appendChild(hdr);
+
+    var imgWrap = document.createElement("div");
+    imgWrap.className = "map-image-wrap";
+
+    if (b64Uri) {
+      var img = document.createElement("img");
+      img.className = "map-image";
+      img.src = b64Uri;
+      img.alt = "Geographic activity map";
+      img.title = "Click to enlarge";
+      img.addEventListener("click", function () {
+        openLightbox(b64Uri, "Geographic Activity Map");
+      });
+      imgWrap.appendChild(img);
+    } else {
+      var none = document.createElement("div");
+      none.className   = "map-not-found";
+      none.textContent = "No map image found. Expected: D:/map/{identifier}_map.png";
+      imgWrap.appendChild(none);
+    }
+
+    wrap.appendChild(imgWrap);
+    section.appendChild(wrap);
+
+    // Scroll to map
+    setTimeout(function () { section.scrollIntoView({ behavior: "smooth", block: "start" }); }, 400);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // TARGET PROFILE CARD
+  // ══════════════════════════════════════════════════════════════
+  function renderProfileCard(profile) {
+    var section = document.getElementById("osint-profile-section");
+    if (!section) return;
+    section.innerHTML = "";
+
+    var card = document.createElement("div");
+    card.className = "osint-profile-card" + (profile.found ? "" : " not-found");
+
+    // Bio side
+    var bio = document.createElement("div");
+    bio.className = "osint-bio";
+    var hdr = document.createElement("div");
+    hdr.className   = "osint-bio-header";
+    hdr.textContent = "TARGET OSINT PROFILE";
+    bio.appendChild(hdr);
+
+    if (!profile.found) {
+      var noRec = document.createElement("div");
+      noRec.className   = "osint-no-record";
+      noRec.textContent = "No record found in OSINT database for this identifier.";
+      bio.appendChild(noRec);
+    } else {
+      [
+        ["FULL NAME",     profile.name,    true],
+        ["PHONE",         profile.phone,   false],
+        ["EMAIL",         profile.email,   false],
+        ["COUNTRY",       profile.country, false],
+        ["ADDRESS",       profile.address, false],
+        ["DATE OF BIRTH", profile.dob,     false],
+      ].forEach(function (f) {
+        if (!f[1]) return;
+        var row = document.createElement("div"); row.className = "osint-field";
+        var lbl = document.createElement("span"); lbl.className="osint-field-label"; lbl.textContent=f[0];
+        var val = document.createElement("span"); val.className="osint-field-value"+(f[2]?" highlight":""); val.textContent=f[1];
+        row.appendChild(lbl); row.appendChild(val); bio.appendChild(row);
+      });
+    }
+    card.appendChild(bio);
+
+    // Photo side
+    var pw = document.createElement("div"); pw.className="osint-photo-wrap";
+    if (profile.found && profile.photo_b64) {
+      var img = document.createElement("img");
+      img.className="osint-photo"; img.src=profile.photo_b64; img.alt="Target photo";
+      img.title="Click to enlarge";
+      img.addEventListener("click", function () { openLightbox(profile.photo_b64, "TARGET PHOTO"); });
+      pw.appendChild(img);
+    } else {
+      var ph = document.createElement("div");
+      ph.className="osint-photo-placeholder"; ph.textContent="👤";
+      pw.appendChild(ph);
+    }
+    var pl = document.createElement("div");
+    pl.className="osint-photo-label";
+    pl.textContent = profile.found && profile.photo_b64 ? "TARGET PHOTO" : "NO PHOTO ON FILE";
+    pw.appendChild(pl);
+    card.appendChild(pw);
+    section.appendChild(card);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // FREQUENCY BAR CHART
+  // ══════════════════════════════════════════════════════════════
+  function renderFrequencyList(contacts) {
+    var section = document.getElementById("osint-freq-section");
+    if (!section || !contacts || !contacts.length) return;
+    section.innerHTML = "";
+
+    var sorted  = contacts.slice().sort(function (a,b) { return b.call_count - a.call_count; });
+    var maxC    = sorted[0] ? sorted[0].call_count : 1;
+    var top     = sorted.slice(0, 15);
+
+    var wrap = document.createElement("div"); wrap.className="contact-freq-wrap";
+
+    var hdr = document.createElement("div"); hdr.className="osint-section-header";
+    var ht  = document.createElement("span"); ht.textContent="CONTACT FREQUENCY — MOST TO LEAST";
+    var hc  = document.createElement("span"); hc.className="osint-section-count";
+    hc.textContent = "Top "+top.length+" of "+contacts.length+" contacts";
+    hdr.appendChild(ht); hdr.appendChild(hc); wrap.appendChild(hdr);
+
+    var list = document.createElement("div"); list.className="freq-list";
+
+    top.forEach(function (c, idx) {
+      var row = document.createElement("div"); row.className="freq-row";
+
+      // Rank
+      var rank = document.createElement("div"); rank.className="freq-rank";
+      rank.textContent=idx+1; row.appendChild(rank);
+
+      // Photo (circle)
+      var displayName = c.osint_name || c.name || c.phone || "Unknown";
+      if (c.photo_b64) {
+        var img = document.createElement("img");
+        img.className="freq-photo-mini"; img.src=c.photo_b64; img.alt=displayName;
+        img.title="Click to enlarge";
+        img.style.cursor="pointer";
+        img.addEventListener("click", function () { openLightbox(c.photo_b64, displayName); });
+        row.appendChild(img);
+      } else {
+        var ph = document.createElement("div"); ph.className="freq-photo-mini-placeholder";
+        ph.textContent="👤"; row.appendChild(ph);
+      }
+
+      // Name (best available)
+      var nm = document.createElement("div"); nm.className="freq-name";
+      nm.title=displayName; nm.textContent=displayName; row.appendChild(nm);
+
+      // Bar
+      var bw = document.createElement("div"); bw.className="freq-bar-wrap";
+      var bar= document.createElement("div"); bar.className="freq-bar"+(c.osint_found?" osint-bar":"");
+      bar.style.width = Math.round((c.call_count/maxC)*100)+"%";
+      bw.appendChild(bar); row.appendChild(bw);
+
+      // Count
+      var cnt = document.createElement("div"); cnt.className="freq-count";
+      cnt.textContent=c.call_count+" calls"; row.appendChild(cnt);
+
+      if (c.osint_found) {
+        var dot=document.createElement("div"); dot.className="freq-osint-dot";
+        dot.title="OSINT record found"; row.appendChild(dot);
+      }
+
+      list.appendChild(row);
+    });
+
+    wrap.appendChild(list);
+
+    var legend = document.createElement("div");
+    legend.style.cssText="margin-top:10px;font-family:var(--mono);font-size:8px;color:var(--text-muted);display:flex;gap:16px";
+    legend.innerHTML='<span style="color:var(--accent)">■</span> No OSINT &nbsp;&nbsp;<span style="color:var(--success)">■</span> OSINT match &nbsp;&nbsp;<span style="font-size:10px">●</span> Click mini-photo to enlarge';
+    wrap.appendChild(legend);
+    section.appendChild(wrap);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // CONTACTS GRID TABLE — larger photos + lightbox
+  // ══════════════════════════════════════════════════════════════
+  function renderContactsTable(contacts) {
+    var section = document.getElementById("osint-contacts-section");
+    if (!section || !contacts || !contacts.length) return;
+    section.innerHTML = "";
+
+    var wrap = document.createElement("div"); wrap.className="osint-contacts-wrap";
+
+    var hdr = document.createElement("div"); hdr.className="osint-section-header";
+    var ht  = document.createElement("span"); ht.textContent="CONTACT NETWORK — OSINT ENRICHED";
+    var hc  = document.createElement("span"); hc.className="osint-section-count";
+    hc.textContent=contacts.length+" contacts identified"; hdr.appendChild(ht); hdr.appendChild(hc);
+    wrap.appendChild(hdr);
+
+    var grid = document.createElement("div"); grid.className="osint-contacts-grid";
+
+    // Column header
+    var colHdr = document.createElement("div"); colHdr.className="osint-grid-header";
+    ["#","PHOTO","NAME / OSINT NAME","PHONE","COUNTRY","CALLS","OSINT","EMAIL","ADDRESS / DOB"]
+      .forEach(function (col) {
+        var cell=document.createElement("div"); cell.className="osint-grid-header-cell";
+        cell.textContent=col; colHdr.appendChild(cell);
+      });
+    grid.appendChild(colHdr);
+
+    contacts.forEach(function (c, idx) {
+      var row=document.createElement("div");
+      row.className="osint-contact-row"+(c.osint_found?" osint-hit":"");
+
+      // 1. Serial
+      var numCell=document.createElement("div"); numCell.className="osint-cell osint-cell-num";
+      numCell.textContent=idx+1; row.appendChild(numCell);
+
+      // 2. Photo — larger, click to zoom
+      var photoCell=document.createElement("div"); photoCell.className="osint-cell osint-cell-photo";
+      var displayName=c.osint_name||c.name||c.phone||"Unknown";
+      if (c.photo_b64) {
+        var img=document.createElement("img");
+        img.className="osint-contact-photo"; img.src=c.photo_b64; img.alt=displayName;
+        img.title="Click to enlarge — "+displayName;
+        img.addEventListener("click", function () { openLightbox(c.photo_b64, displayName); });
+        photoCell.appendChild(img);
+      } else {
+        var ph=document.createElement("div"); ph.className="osint-contact-photo-placeholder";
+        ph.textContent="👤"; photoCell.appendChild(ph);
+      }
+      row.appendChild(photoCell);
+
+      // 3. Name — show call name + OSINT/LLM name below
+      var nameCell=document.createElement("div"); nameCell.className="osint-cell osint-cell-name";
+      var mainName=document.createElement("div"); mainName.className="osint-cell-name-main";
+      mainName.textContent=c.name||"Unknown"; mainName.title=c.name||"";
+      nameCell.appendChild(mainName);
+      var extraName = c.osint_name||c.llm_name||"";
+      if (extraName && extraName!==c.name) {
+        var extra=document.createElement("div"); extra.className="osint-cell-name-osint";
+        extra.textContent=(c.osint_found?"✓ ":"~ ")+extraName;
+        extra.title=c.osint_found?"OSINT verified":"LLM identified";
+        nameCell.appendChild(extra);
+      }
+      row.appendChild(nameCell);
+
+      // 4. Phone
+      row.appendChild(mkCell(c.phone||"—", true));
+
+      // 5. Country
+      row.appendChild(mkCell(c.country||c.osint_country||"—", false));
+
+      // 6. Call count
+      var callCell=document.createElement("div"); callCell.className="osint-cell";
+      callCell.style.justifyContent="center";
+      var pill=document.createElement("span"); pill.className="osint-call-pill";
+      pill.textContent=c.call_count; callCell.appendChild(pill);
+      row.appendChild(callCell);
+
+      // 7. OSINT badge
+      var obCell=document.createElement("div"); obCell.className="osint-cell";
+      obCell.style.justifyContent="center";
+      var badge=document.createElement("span");
+      badge.className="osint-badge "+(c.osint_found?"osint-badge-yes":"osint-badge-no");
+      badge.textContent=c.osint_found?"✓ YES":"NO"; obCell.appendChild(badge);
+      row.appendChild(obCell);
+
+      // 8. Email
+      row.appendChild(mkCell(c.osint_email||"—", false));
+
+      // 9. Address/DOB
+      var addrDob="";
+      if (c.osint_address) addrDob+=c.osint_address;
+      if (c.osint_dob)     addrDob+=(addrDob?" · ":"")+"DOB: "+c.osint_dob;
+      row.appendChild(mkCell(addrDob||"—", false));
+
+      grid.appendChild(row);
+    });
+
+    wrap.appendChild(grid);
+    section.appendChild(wrap);
+  }
+
+  function mkCell(text, mono) {
+    var cell=document.createElement("div"); cell.className="osint-cell";
+    var span=document.createElement("span");
+    span.className="osint-cell-text"+(mono?" mono":"");
+    span.textContent=text; span.title=text;
+    cell.appendChild(span); return cell;
+  }
+
+})();
+JSEOF
+echo "done"
