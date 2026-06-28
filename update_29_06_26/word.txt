@@ -1,0 +1,147 @@
+# ── Contact Frequency — always shown ──────────────────────
+doc.add_paragraph()
+ph_freq = doc.add_heading("CONTACT FREQUENCY — MOST TO LEAST CONTACTED", level=1)
+for run in ph_freq.runs:
+    run.font.color.rgb = RGBColor(0, 48, 96)
+    run.font.name = "Arial"
+
+if enriched_contacts:
+    sorted_contacts = sorted(enriched_contacts, key=lambda x: x.get("call_count", 0), reverse=True)
+    max_count = sorted_contacts[0].get("call_count", 1) if sorted_contacts else 1
+
+    freq_tbl = doc.add_table(rows=1, cols=4)
+    freq_tbl.style = "Table Grid"
+    freq_headers = ["Rank", "Name / Phone", "Country", "Call Count"]
+    freq_widths  = [0.6, 2.8, 1.4, 1.2]
+
+    hdr_row = freq_tbl.rows[0]
+    for j, (h, w) in enumerate(zip(freq_headers, freq_widths)):
+        cell = hdr_row.cells[j]
+        cell.width = Inches(w)
+        cell.text  = h
+        set_cell_bg(cell, "003060")
+        for para in cell.paragraphs:
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in para.runs:
+                run.bold = True; run.font.size = Pt(9)
+                run.font.name = "Arial"
+                run.font.color.rgb = RGBColor(255, 255, 255)
+
+    for rank_idx, c in enumerate(sorted_contacts[:20]):
+        row = freq_tbl.add_row()
+        bg  = "EBF2FA" if rank_idx % 2 == 0 else "FFFFFF"
+        osint = c.get("osint")
+        vals  = [
+            str(rank_idx + 1),
+            c.get("name") or c.get("phone") or "Unknown",
+            c.get("country") or "—",
+            str(c.get("call_count", 0)) + " calls",
+        ]
+        for j, (val, w) in enumerate(zip(vals, freq_widths)):
+            cell = row.cells[j]
+            cell.width = Inches(w)
+            cell.text  = val
+            fill = "E8F5E9" if osint and j == 1 else bg
+            set_cell_bg(cell, fill)
+            for para in cell.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(9); run.font.name = "Arial"
+                    if j == 0:
+                        run.font.color.rgb = RGBColor(0, 48, 96)
+                        run.bold = True
+else:
+    add_para("No contact data available.", italic=True, size=11, color=(120,120,120))
+
+doc.add_paragraph()
+add_divider()
+
+# ── Contact Network Table — always shown ───────────────────
+doc.add_paragraph()
+ph_net = doc.add_heading("CONTACT NETWORK — OSINT ENRICHED", level=1)
+for run in ph_net.runs:
+    run.font.color.rgb = RGBColor(0, 48, 96)
+    run.font.name = "Arial"
+
+if enriched_contacts:
+    from backend.services.osint_service import (
+        COL_NAME, COL_EMAIL, COL_ADDRESS, COL_DOB, COL_COUNTRY
+    )
+    net_headers = ["#", "Photo", "Name", "Phone", "Country",
+                   "Calls", "OSINT", "Email", "Address / DOB"]
+    net_widths  = [0.3, 1.5, 1.2, 1.1, 0.9, 0.5, 0.55, 1.3, 1.4]
+
+    net_tbl = doc.add_table(rows=1, cols=len(net_headers))
+    net_tbl.style = "Table Grid"
+
+    hdr_row = net_tbl.rows[0]
+    for j, (h, w) in enumerate(zip(net_headers, net_widths)):
+        cell = hdr_row.cells[j]
+        cell.width = Inches(w)
+        cell.text  = h
+        set_cell_bg(cell, "003060")
+        for para in cell.paragraphs:
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in para.runs:
+                run.bold = True; run.font.size = Pt(8)
+                run.font.name = "Arial"
+                run.font.color.rgb = RGBColor(255, 255, 255)
+
+    for idx, contact in enumerate(enriched_contacts[:30]):
+        osint  = contact.get("osint")
+        bg     = "EBF2FA" if idx % 2 == 0 else "FFFFFF"
+        osint_bg = "E8F5E9" if osint else bg
+
+        row = net_tbl.add_row()
+        from docx.shared import Cm
+        row.height = Cm(3.2)      # bigger row height for photos
+
+        vals = [
+            str(idx + 1),
+            "",   # photo — handled separately below
+            contact.get("name", "") or "",
+            contact.get("phone", "") or "",
+            contact.get("country", "") or "",
+            str(contact.get("call_count", 0)),
+            "✓ YES" if osint else "NO",
+            osint.get(COL_EMAIL, "")   if osint else "",
+            (osint.get(COL_ADDRESS, "") or "") + (
+                (" · DOB: " + str(osint.get(COL_DOB, ""))) if osint and osint.get(COL_DOB) else ""
+            ) if osint else "",
+        ]
+
+        for j, (val, w) in enumerate(zip(vals, net_widths)):
+            cell = row.cells[j]
+            cell.width = Inches(w)
+            fill = osint_bg if j >= 6 and osint else bg
+            set_cell_bg(cell, fill)
+
+            if j == 1:
+                # Photo cell — embed image if available
+                photo_b64 = osint.get("_photo_b64") if osint else None
+                if photo_b64:
+                    try:
+                        header_part, b64data = photo_b64.split(",", 1)
+                        img_bytes  = base64.b64decode(b64data)
+                        img_stream = io.BytesIO(img_bytes)
+                        para = cell.paragraphs[0]
+                        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        run  = para.add_run()
+                        run.add_picture(img_stream, width=Inches(1.3))  # big photo
+                    except Exception as e:
+                        cell.text = "—"
+                else:
+                    cell.text = "—"
+                    for para in cell.paragraphs:
+                        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        for run in para.runs:
+                            run.font.size = Pt(8); run.font.name = "Arial"
+            else:
+                cell.text = val
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(8); run.font.name = "Arial"
+                        if j == 6 and osint:
+                            run.font.color.rgb = RGBColor(0, 128, 0)
+                            run.bold = True
+else:
+    add_para("No contact network data available.", italic=True, size=11, color=(120,120,120))
