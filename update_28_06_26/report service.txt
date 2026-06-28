@@ -1,0 +1,63 @@
+# Resolve unknown names from call records
+from backend.services.osint_service import extract_names_from_records
+for contact in (enriched_contacts or []):
+    name = contact.get("name", "")
+    if not name or name.lower() in ("unknown", "not known", "subject", ""):
+        resolved = extract_names_from_records(sorted_records, contact.get("phone", ""))
+        if resolved:
+            contact["name"] = resolved
+            contact["name_source"] = "resolved_from_records"
+
+
+
+# Check for map image at D:\map\{identifier}_map.png
+map_b64 = None
+try:
+    import re as _re
+    safe_id = _re.sub(r'[^\w\-.]', '_', identifier)
+    map_path = Path(f"D:/map/{safe_id}_map.png")
+    if not map_path.exists():
+        # Also try with original identifier
+        map_path = Path(f"D:/map/{identifier}_map.png")
+    if map_path.exists():
+        map_data = map_path.read_bytes()
+        map_b64 = "data:image/png;base64," + base64.b64encode(map_data).decode("utf-8")
+        logger.info(f"Map image found: {map_path}")
+    else:
+        logger.info(f"No map image found at D:/map/{safe_id}_map.png")
+except Exception as e:
+    logger.warning(f"Map image load failed: {e}")
+
+
+
+
+
+
+
+return {
+    "report_text":    report_text,
+    "report_path":    str(report_path),
+    "docx_path":      docx_path,
+    "analytics_path": str(analytics_path),
+    "summary_stats":  analytics,
+    "map_b64":        map_b64,        # ← add this
+}
+
+
+
+
+
+
+
+# Change this
+run.add_picture(img_stream, width=Inches(2.0))
+
+# To this — bigger photo in docx contact table
+run.add_picture(img_stream, width=Inches(1.4))  # per cell, so it fills the column
+
+
+
+# After adding each row in the contacts table loop, set height
+from docx.shared import Cm
+row_obj = net_tbl.add_row()
+row_obj.height = Cm(3.5)   # ← add this after add_row()

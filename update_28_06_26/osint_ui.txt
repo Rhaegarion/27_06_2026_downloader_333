@@ -1,0 +1,37 @@
+img.style.cursor = "zoom-in";
+img.addEventListener("click", function () {
+    showPhotoModal(img.src, c.osint_name || c.name || c.phone);
+});
+
+
+
+
+
+function showPhotoModal(src, name) {
+    // Remove existing modal if any
+    var existing = document.getElementById("photo-zoom-overlay");
+    if (existing) existing.remove();
+
+    var overlay = document.createElement("div");
+    overlay.className = "photo-zoom-overlay";
+    overlay.id = "photo-zoom-overlay";
+
+    var img = document.createElement("img");
+    img.className = "photo-zoom-img";
+    img.src = src;
+    img.alt = name;
+    overlay.appendChild(img);
+
+    if (name) {
+        var lbl = document.createElement("div");
+        lbl.className   = "photo-zoom-name";
+        lbl.textContent = name;
+        overlay.appendChild(lbl);
+    }
+
+    overlay.addEventListener("click", function () {
+        overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+}

@@ -1,0 +1,10 @@
+# After result = await generate_report(...)
+return ReportResponse(
+    success=True,
+    session_id=req.session_id,
+    report_path=result["report_path"],
+    report_text=result["report_text"],
+    summary_stats=result["summary_stats"],
+    map_b64=result.get("map_b64"),      # ← add this
+    message="Intelligence report generated successfully.",
+)

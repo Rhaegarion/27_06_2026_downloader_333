@@ -1,0 +1,40 @@
+async function doGenerateReport() {
+    // ... existing code ...
+    const data = await Api.generateReport(state.sessionId, state.identifier);
+    // ... existing rendering ...
+
+    // Load OSINT data now (after report is ready)
+    if (window.OsintUI) {
+        OsintUI.load(state.sessionId);
+    }
+
+    // Show map if available
+    if (data.map_b64) {
+        renderMapImage(data.map_b64, state.identifier);
+    }
+}
+
+
+
+
+function renderMapImage(mapB64, identifier) {
+    var section = document.getElementById("report-map-section");
+    if (!section) return;
+
+    section.innerHTML = "";
+    section.classList.remove("hidden");
+
+    var hdr = document.createElement("div");
+    hdr.style.cssText = "font-family:var(--mono);font-size:9px;letter-spacing:2px;"
+                      + "color:var(--accent);padding-bottom:8px;"
+                      + "border-bottom:1px solid var(--border);margin-bottom:12px";
+    hdr.textContent = "GEOGRAPHIC MAP — " + identifier;
+    section.appendChild(hdr);
+
+    var img = document.createElement("img");
+    img.src   = mapB64;
+    img.alt   = "Geographic intelligence map";
+    img.style.cssText = "width:100%;max-width:100%;border-radius:var(--radius-lg);"
+                      + "border:1px solid var(--border);display:block";
+    section.appendChild(img);
+}

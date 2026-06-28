@@ -1,0 +1,47 @@
+/* Larger contact photos in grid */
+.osint-contact-photo {
+  width: 52px;       /* was 38px */
+  height: 62px;      /* was 44px */
+  cursor: zoom-in;
+}
+.osint-contact-photo-placeholder {
+  width: 52px;       /* was 38px */
+  height: 62px;      /* was 44px */
+}
+
+/* Photo zoom modal */
+.photo-zoom-overlay {
+  position: fixed; inset: 0; z-index: 9998;
+  background: rgba(0,0,0,0.82);
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+  animation: fadein .2s ease;
+}
+.photo-zoom-img {
+  max-width: 480px; max-height: 560px;
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border-light);
+  box-shadow: 0 0 60px rgba(0,0,0,0.8);
+  object-fit: contain;
+}
+.photo-zoom-name {
+  position: fixed;
+  bottom: 40px; left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 11px; letter-spacing: 1px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+}
+
+/* Map section */
+#report-map-section {
+  margin-top: 22px;
+  padding: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}

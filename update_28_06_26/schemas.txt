@@ -1,0 +1,8 @@
+class ReportResponse(BaseModel):
+    success:       bool
+    session_id:    str
+    report_path:   str
+    report_text:   str
+    summary_stats: dict
+    map_b64:       Optional[str] = None   # ← add this
+    message:       str

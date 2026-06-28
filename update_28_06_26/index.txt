@@ -1,0 +1,11 @@
+<!-- OSINT target profile — shown after report generation -->
+<div id="osint-profile-section"></div>
+
+<!-- Contact frequency chart -->
+<div id="osint-freq-section"></div>
+
+<!-- Contact network table with photos -->
+<div id="osint-contacts-section"></div>
+
+<!-- Geographic map image -->
+<div id="report-map-section" class="hidden"></div>

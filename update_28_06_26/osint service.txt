@@ -1,0 +1,67 @@
+def extract_names_from_records(records: list, phone: str) -> str:
+    """
+    Scan all call subjects and gists for mentions of a name
+    associated with a given phone number.
+    Returns the most frequently mentioned name candidate, or empty string.
+    """
+    import re
+    from collections import Counter
+
+    name_candidates = []
+
+    for r in records:
+        # Check if this record involves the phone number
+        involves_phone = (
+            (r.calling_no and r.calling_no == phone) or
+            (r.called_no  and r.called_no  == phone)
+        )
+        if not involves_phone:
+            continue
+
+        # Pull name directly from party fields first
+        if r.calling_no == phone and r.calling_party:
+            if r.calling_party.lower() not in ("unknown", "not known", "subject", ""):
+                name_candidates.append(r.calling_party.strip())
+        if r.called_no == phone and r.called_party:
+            if r.called_party.lower() not in ("unknown", "not known", "subject", ""):
+                name_candidates.append(r.called_party.strip())
+
+        # Scan gist for name patterns (e.g. "called by Ahmed", "Mr. Khan", "named Priya")
+        text = " ".join(filter(None, [r.msg_gist, r.call_subject]))
+        if text:
+            # Pattern: capitalised words that look like names near identity keywords
+            patterns = [
+                r"(?:called|caller|from|by|named?|known as|identified as|Mr\.?|Ms\.?|Mrs\.?|Dr\.?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+                r"([A-Z][a-z]+\s+[A-Z][a-z]+)\s+(?:called|said|asked|confirmed|stated|mentioned)",
+            ]
+            for pat in patterns:
+                matches = re.findall(pat, text)
+                for m in matches:
+                    m = m.strip()
+                    if len(m) > 3 and m.lower() not in ("unknown", "not known", "subject"):
+                        name_candidates.append(m)
+
+    if not name_candidates:
+        return ""
+    # Return most frequently occurring candidate
+    freq = Counter(name_candidates)
+    return freq.most_common(1)[0][0]
+
+
+def resolve_contact_names_via_llm_prompt(contacts: list, records: list) -> str:
+    """
+    Build a prompt block asking the LLM to identify names for unknown contacts.
+    This is injected into the report prompt — the LLM fills in what it can from the gists.
+    """
+    unknown_phones = [
+        c for c in contacts
+        if not c.get("name") or c["name"].lower() in ("unknown", "not known", "subject", "")
+    ]
+    if not unknown_phones:
+        return ""
+
+    lines = ["NAME RESOLUTION REQUEST — identify names for these phone numbers from the call records if mentioned in gists or subjects:"]
+    for c in unknown_phones[:15]:
+        lines.append(f"  Phone: {c.get('phone')} — scan all records involving this number for any name mentions")
+    lines.append("If a name is found in the gists or subjects, include it in your network table. If not found, write Unknown.")
+    return "\n".join(lines)
