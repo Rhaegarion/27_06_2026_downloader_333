@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Create account — COBRA{% endblock %}
+{% block body %}
+<div class="auth-screen scale-texture">
+  <div class="auth-card" style="max-width: 440px;">
+    <a href="{{ url_for('auth.login') }}" class="back-link">&larr; Back to sign in</a>
+
+    <div class="auth-brand" style="margin-bottom: 24px;">
+      <div class="wordmark">New Account</div>
+      <div class="tagline">Details are stored against your NameID</div>
+    </div>
+
+    {% if get_flashed_messages() %}
+    <div class="flash-list">
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('auth.register') }}" autocomplete="off">
+      <div class="field-row">
+        <div class="field">
+          <label for="name_id">User ID (2–3 letters)</label>
+          <input type="text" id="name_id" name="name_id" maxlength="3" placeholder="JDS"
+                 value="{{ form.get('name_id','') }}" required autofocus>
+        </div>
+        <div class="field">
+          <label for="rank">Rank</label>
+          <input type="text" id="rank" name="rank" value="{{ form.get('rank','') }}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="name">Full name</label>
+        <input type="text" id="name" name="name" value="{{ form.get('name','') }}" required>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="id_number">ID number</label>
+          <input type="text" id="id_number" name="id_number" value="{{ form.get('id_number','') }}">
+        </div>
+        <div class="field">
+          <label for="section">Section</label>
+          <input type="text" id="section" name="section" value="{{ form.get('section','') }}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender">
+          <option value="" disabled {% if not form.get('gender') %}selected{% endif %}>Select…</option>
+          {% for g in genders %}
+            <option value="{{ g }}" {% if form.get('gender') == g %}selected{% endif %}>{{ g }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required minlength="6">
+        </div>
+        <div class="field">
+          <label for="confirm_password">Confirm password</label>
+          <input type="password" id="confirm_password" name="confirm_password" required minlength="6">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Create account</button>
+    </form>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}

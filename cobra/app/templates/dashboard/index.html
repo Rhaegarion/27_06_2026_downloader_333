@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — COBRA{% endblock %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar scale-texture">
+    <div class="wordmark">CO<span>BRA</span></div>
+
+    <div class="nav-section-label">Overview</div>
+    <ul class="nav-list">
+      <li><a href="{{ url_for('dashboard.index') }}" class="nav-item is-active"><span class="diamond"></span>Dashboard</a></li>
+    </ul>
+
+    <div class="nav-section-label">Reporting</div>
+    <ul class="nav-list">
+      <li><span class="nav-item is-disabled"><span class="diamond"></span>New Report</span></li>
+    </ul>
+
+    <div class="nav-section-label">Registers</div>
+    <ul class="nav-list">
+      <li><span class="nav-item is-disabled"><span class="diamond"></span>VOIP Table</span></li>
+      <li><span class="nav-item is-disabled"><span class="diamond"></span>IP Table</span></li>
+      <li><span class="nav-item is-disabled"><span class="diamond"></span>OSINT</span></li>
+    </ul>
+
+    <div class="nav-section-label">WAN</div>
+    <ul class="nav-list">
+      <li><span class="nav-item is-disabled"><span class="diamond"></span>Allocation</span></li>
+      <li><span class="nav-item is-disabled"><span class="diamond"></span>Utilization</span></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">{{ user.NameID }}</div>
+        <div class="who">
+          <div class="name">{{ user.Name }}</div>
+          <div class="role">{{ user.Rank or "—" }}{% if user.Section %} &middot; {{ user.Section }}{% endif %}</div>
+        </div>
+      </div>
+      <a href="{{ url_for('auth.logout') }}" class="logout-link">Sign out</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-header">
+      <h1>Welcome back, {{ user.Name.split(' ')[0] if user.Name else user.NameID }}</h1>
+      <div class="sub">{{ modules|length }} modules &middot; new report generation is next in the build queue</div>
+    </div>
+
+    <div class="module-grid">
+      {% for m in modules %}
+      <div class="module-card {% if not m.endpoint %}is-disabled{% endif %}">
+        <div class="card-top">
+          <h3>{{ m.name }}</h3>
+          <span class="status-pill {% if m.status == 'next up' %}is-next{% endif %}">{{ m.status }}</span>
+        </div>
+        <p>{{ m.desc }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </main>
+</div>
+{% endblock %}
