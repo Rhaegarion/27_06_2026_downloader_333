@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — COBRA{% endblock %}
+{% block body %}
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+
+  <main class="main">
+    <div class="main-header">
+      <h1>Welcome back, {{ user.Name.split(' ')[0] if user.Name else user.NameID }}</h1>
+      <div class="sub">{{ modules|length }} modules &middot; New Message is ready to use</div>
+    </div>
+
+    <div class="module-grid">
+      {% for m in modules %}
+      {% if m.endpoint %}<a href="{{ url_for(m.endpoint, msg_type='voip') }}" class="module-card">
+      {% else %}<div class="module-card is-disabled">{% endif %}
+        <div class="card-top">
+          <h3>{{ m.name }}</h3>
+          <span class="status-pill {% if m.status == 'next up' %}is-next{% endif %}">{{ m.status }}</span>
+        </div>
+        <p>{{ m.desc }}</p>
+      {% if m.endpoint %}</a>{% else %}</div>{% endif %}
+      {% endfor %}
+    </div>
+  </main>
+</div>
+{% endblock %}

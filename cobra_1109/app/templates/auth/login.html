@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Sign in — COBRA{% endblock %}
+{% block body %}
+<div class="auth-screen scale-texture">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="wordmark">CO<span>BRA</span></div>
+      <div class="tagline">Restricted access &middot; LAN only</div>
+    </div>
+
+    <form method="POST" action="{{ url_for('auth.login') }}" autocomplete="off">
+      <div class="field">
+        <label for="name_id">User ID</label>
+        <input type="text" id="name_id" name="name_id" maxlength="3" placeholder="e.g. JDS" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Sign in</button>
+    </form>
+
+    <div class="auth-footer">
+      New here? <a href="{{ url_for('auth.register') }}">Create an account</a>
+    </div>
+
+    <div class="auth-toggle-row">
+      {% include "_theme_toggle.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}
