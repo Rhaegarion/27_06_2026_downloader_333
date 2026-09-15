@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}References — COBRA{% endblock %}
+{% block body %}
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+  <main class="main">
+    <div class="main-header">
+      <h1>References</h1>
+      <div class="sub">
+        Earlier {{ msg_type|upper }} messages involving the same
+        {% if msg_type == 'voip' %}numbers{% else %}addresses{% endif %}.
+        Tick the ones to reference.
+      </div>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="diamond"></span>
+        <h2>This message</h2>
+      </div>
+      <div class="panel-body">
+        {% if current_numbers or current_parties %}
+          <div class="chip-row">
+            {% for n in current_numbers %}<span class="chip">{{ n }}</span>{% endfor %}
+            {% for p in current_parties %}<span class="chip">{{ p }}</span>{% endfor %}
+          </div>
+          <div class="field-hint">
+            The results below were pre-filled from these. Use the search to look
+            up anything else.
+          </div>
+        {% else %}
+          <div class="field-hint">
+            No numbers on the message yet — extract a folder first, or search below.
+          </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="diamond"></span>
+        <h2>Search</h2>
+      </div>
+      <div class="panel-body grid tight">
+        <div class="field">
+          <label for="f-start">From date</label>
+          <input type="date" id="f-start">
+        </div>
+        <div class="field">
+          <label for="f-end">To date</label>
+          <input type="date" id="f-end">
+        </div>
+        {% if msg_type == 'voip' %}
+        <div class="field">
+          <label for="f-number">Number</label>
+          <input type="text" id="f-number" placeholder="calling or called">
+        </div>
+        {% endif %}
+        <div class="field">
+          <label for="f-clgpty">Calling party</label>
+          <input type="text" id="f-clgpty">
+        </div>
+        <div class="field">
+          <label for="f-cldpty">Called party</label>
+          <input type="text" id="f-cldpty">
+        </div>
+        <div class="field">
+          <label for="f-category">Category</label>
+          <select id="f-category">
+            <option value="">Any</option>
+            {% for o in dropdowns['Category'] %}
+              <option value="{{ o.value }}">{{ o.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-language">Language</label>
+          <select id="f-language">
+            <option value="">Any</option>
+            {% for o in dropdowns['Language'] %}
+              <option value="{{ o.value }}">{{ o.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-filter">Filter value</label>
+          <input type="text" id="f-filter">
+        </div>
+        <div class="field field-wide">
+          <label for="f-keyword">Keywords (comma separated)</label>
+          <input type="text" id="f-keyword" placeholder="searched in subject and gist">
+        </div>
+      </div>
+      <div class="panel-body" style="padding-top:0;">
+        <div class="btn-pair">
+          <button type="button" class="btn btn-primary btn-inline" id="btn-search">Search</button>
+          <button type="button" class="btn btn-ghost btn-inline" id="btn-prefill">Reset to this message</button>
+          <button type="button" class="btn btn-ghost btn-inline" id="btn-columns">Columns</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="diamond"></span>
+        <h2>Results</h2>
+        <span class="panel-note" id="result-note"></span>
+      </div>
+      <div class="panel-body">
+        <div class="table-scroll">
+          <table class="data-table" id="results">
+            <thead><tr id="head-row"></tr></thead>
+            <tbody id="body-rows"></tbody>
+          </table>
+        </div>
+        <div class="save-row">
+          <button type="button" class="btn btn-primary" id="btn-apply">
+            Add selected as reference
+          </button>
+          <button type="button" class="btn btn-ghost btn-inline" id="btn-prev">Previous</button>
+          <button type="button" class="btn btn-ghost btn-inline" id="btn-next">Next</button>
+          <a class="btn btn-ghost btn-inline"
+             href="{{ url_for('messages.new', msg_type=msg_type) }}">Back to message</a>
+          <span class="save-note" id="apply-note"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="diamond"></span>
+        <h2>Reference text so far</h2>
+      </div>
+      <div class="panel-body">
+        <div class="field field-wide">
+          <textarea id="ref-preview" rows="5" readonly
+                    class="is-readonly">{{ (draft.get('values') or {}).get('Msg_Ref', '') }}</textarea>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="columns-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3>Choose columns</h3>
+    <p class="modal-note">Saved to your profile and used whenever you open this page.</p>
+    <div id="column-list" class="column-list"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost btn-inline" id="columns-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary btn-inline" id="columns-save">Save</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="ref-config" type="application/json">
+{
+  "msgType": {{ msg_type|tojson }},
+  "numbers": {{ current_numbers|tojson }},
+  "parties": {{ current_parties|tojson }},
+  "columns": {{ columns|tojson }},
+  "available": {{ available|tojson }}
+}
+</script>
+<script src="{{ url_for('static', filename='js/references.js') }}"></script>
+{% endblock %}

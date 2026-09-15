@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}OSINT — COBRA{% endblock %}
+{% block body %}
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+  <main class="main">
+    <div class="main-header">
+      <h1>OSINT</h1>
+      <div class="sub">
+        Notes added here are appended to the {{ msg_type|upper }} message you
+        are preparing.
+      </div>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="diamond"></span>
+        <h2>Current OSINT on the message</h2>
+      </div>
+      <div class="panel-body">
+        <div class="field field-wide">
+          <label for="existing-osint">Already added</label>
+          <textarea id="existing-osint" rows="5" readonly
+                    class="is-readonly">{{ draft.get('Osint', '') }}</textarea>
+          <div class="field-hint">
+            Read-only here. Edit it directly on the message form if you need to
+            change what is already there.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="diamond"></span>
+        <h2>Add a note</h2>
+      </div>
+      <div class="panel-body">
+        <div class="field field-wide">
+          <label for="osint-note">OSINT note</label>
+          <textarea id="osint-note" rows="8"
+                    placeholder="Findings to append to the message…"></textarea>
+        </div>
+        <div class="save-row">
+          <button type="button" class="btn btn-primary" id="btn-add">Add to message</button>
+          <a class="btn btn-ghost btn-inline"
+             href="{{ url_for('messages.new', msg_type=msg_type) }}">Back to message</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var snack = window.COBRA.snack;
+  var note = document.getElementById("osint-note");
+  document.getElementById("btn-add").addEventListener("click", function () {
+    var text = (note.value || "").trim();
+    if (!text) { snack.error("Write something first."); note.focus(); return; }
+    fetch("/message/api/osint/{{ msg_type }}/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: text })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (b) {
+        if (!b.ok) { snack.error(b.error || "Could not add the note."); return; }
+        document.getElementById("existing-osint").value = b.Osint;
+        note.value = "";
+        snack.success("Added to the message.");
+      })
+      .catch(function (e) { snack.error("Could not reach the server.", String(e)); });
+  });
+})();
+</script>
+{% endblock %}

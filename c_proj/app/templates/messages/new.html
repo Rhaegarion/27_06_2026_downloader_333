@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}New {{ msg_type|upper }} Message — COBRA{% endblock %}
+
+{% macro render_field(f, dropdowns) %}
+  {% if f.widget != 'hidden' %}
+  <div class="field {% if f.widget == 'textarea' %}field-wide{% endif %}"
+       data-source="{{ f.source }}">
+    <label for="f-{{ f.name }}">
+      {{ f.label }}
+      {% if f.source == 'json' %}<span class="src-tag">from file</span>{% endif %}
+    </label>
+
+    {% if f.widget == 'textarea' %}
+      <textarea id="f-{{ f.name }}" name="{{ f.name }}"
+                data-field="{{ f.name }}" rows="3"></textarea>
+    {% elif f.widget == 'checkbox' %}
+      <label class="checkbox-row">
+        <input type="checkbox" id="f-{{ f.name }}" name="{{ f.name }}"
+               data-field="{{ f.name }}">
+        <span>Mark as important</span>
+      </label>
+    {% elif f.widget == 'select' and dropdowns.get(f.name) %}
+      <select id="f-{{ f.name }}" name="{{ f.name }}" data-field="{{ f.name }}">
+        <option value="">Select…</option>
+        {% for o in dropdowns[f.name] %}
+          <option value="{{ o.value }}">{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    {% elif f.widget == 'readonly' %}
+      <input type="text" id="f-{{ f.name }}" name="{{ f.name }}"
+             data-field="{{ f.name }}" readonly class="is-readonly">
+    {% else %}
+      <input type="text" id="f-{{ f.name }}" name="{{ f.name }}"
+             data-field="{{ f.name }}"
+             {% if f.default %}value="{{ f.default }}"{% endif %}>
+    {% endif %}
+
+    {% if f.note %}<div class="field-hint">{{ f.note }}</div>{% endif %}
+  </div>
+  {% endif %}
+{% endmacro %}
+
+{% block body %}
+<div class="app-shell">
+  {% include "_sidebar.html" %}
+
+  <main class="main">
+    <div class="main-header">
+      <h1>New Message</h1>
+      <div class="sub">
+        Next number this month: <strong id="next-msgno">{{ next_msgno }}</strong>
+        <span class="hint-inline">— confirmed when you save</span>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <a class="tab {% if msg_type == 'voip' %}is-active{% endif %}"
+         href="{{ url_for('messages.new', msg_type='voip') }}" role="tab">VOIP</a>
+      <a class="tab {% if msg_type == 'ip' %}is-active{% endif %}"
+         href="{{ url_for('messages.new', msg_type='ip') }}" role="tab">IP</a>
+    </div>
+
+    <form id="msg-form" data-msg-type="{{ msg_type }}"
+          data-current-user="{{ current_user.NameID }}" autocomplete="off">
+
+      {# ---------- Block 1: Source ---------- #}
+      <section class="panel">
+        <div class="panel-head">
+          <span class="diamond"></span>
+          <h2>Source</h2>
+        </div>
+        <div class="panel-body">
+          <div class="source-row">
+            <div class="field field-system">
+              <label for="f-System">Recorder system</label>
+              <select id="f-System" name="System" data-field="System">
+                <option value="">Select…</option>
+                {% for o in dropdowns['System'] %}
+                  <option value="{{ o.value }}">{{ o.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field field-path">
+              <label for="folder-path">Intercept folder path</label>
+              <input type="text" id="folder-path" spellcheck="false"
+                     placeholder="\\192.168.2.231\MSG to be PPD Admin\...\MSG01_ASK_NOI_...\eventid">
+            </div>
+            <div class="field field-actions">
+              <label>&nbsp;</label>
+              <div class="btn-pair">
+                <button type="button" class="btn btn-primary btn-inline" id="btn-extract">Extract</button>
+                <button type="button" class="btn btn-ghost btn-inline" id="btn-reset">Reset</button>
+              </div>
+            </div>
+          </div>
+          <div class="field-hint" id="format-hint">
+            Systems containing “VS” read PRI.XML; others read the Event ID JSON.
+          </div>
+          <div class="field-hint" id="extract-status"></div>
+
+          <div class="grid tight source-extras">
+            {% for f in source_fields %}
+              {% if f.name != 'System' %}{{ render_field(f, dropdowns) }}{% endif %}
+            {% endfor %}
+            {% if msg_type == 'ip' %}
+            <div class="field">
+              <label>BEPS confirmation</label>
+              <label class="checkbox-row">
+                <input type="checkbox" id="beps-confirm" checked>
+                <span>BEPS details verified</span>
+              </label>
+              <div class="field-hint">Required before an IP message can be saved.</div>
+            </div>
+            {% endif %}
+            <div class="field">
+              <label for="manual-msgno">Custom message number</label>
+              <input type="text" id="manual-msgno" inputmode="numeric"
+                     placeholder="leave blank to use {{ next_msgno }}">
+              <div class="field-hint">
+                Overrides the auto-assigned number. Rejected if already used this month.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {# ---------- Blocks 2-4 ---------- #}
+      {% for group, items in groups %}
+        {% if group not in ('Hidden', 'Source') %}
+        <section class="panel" data-group="{{ group }}">
+          <div class="panel-head">
+            <span class="diamond"></span>
+            <h2>{{ group }}</h2>
+            {% if group == 'Extracted details' %}
+              <span class="panel-note">populated by Extract</span>
+            {% endif %}
+          </div>
+          <div class="panel-body grid">
+            {% for f in items %}{{ render_field(f, dropdowns) }}{% endfor %}
+
+            {% if group == 'Classification & addressing' %}
+              <div class="field field-wide">
+                <label for="f-Extra_Add">
+                  Extra addressee <span class="src-tag">display only</span>
+                </label>
+                <textarea id="f-Extra_Add" data-field="Extra_Add" rows="3"></textarea>
+                <div class="field-hint">
+                  Filled from the selected language. Appears on the document but
+                  is not stored as a column.
+                </div>
+              </div>
+            {% endif %}
+
+            {% if group == 'Message content' %}
+              <div class="field field-wide">
+                <label for="f-Osint">
+                  OSINT <span class="src-tag">display only</span>
+                </label>
+                <textarea id="f-Osint" data-field="Osint" rows="3"></textarea>
+                <div class="field-hint">
+                  Held separately in the OSINT table, not on this message row.
+                </div>
+              </div>
+              <div class="field field-wide">
+                <div class="btn-pair">
+                  <button type="button" class="btn btn-ghost btn-inline" id="btn-add-ref"
+                          data-href="{{ url_for('messages.references_page', msg_type=msg_type) }}">
+                    Add reference
+                  </button>
+                  <button type="button" class="btn btn-ghost btn-inline" id="btn-add-osint"
+                          data-href="{{ url_for('messages.osint_page', msg_type=msg_type) }}">
+                    Add OSINT info
+                  </button>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </section>
+        {% endif %}
+      {% endfor %}
+
+      <div class="save-row">
+        <button type="button" class="btn btn-primary" id="btn-save">Create message</button>
+        <span class="save-note" id="save-note"></span>
+      </div>
+    </form>
+  </main>
+</div>
+
+{# ---------- confirmation dialog ---------- #}
+<div class="modal-backdrop" id="success-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="success-title">
+    <h3 id="success-title">Message created successfully</h3>
+    <p class="modal-body-text">
+      Message <strong class="modal-number" id="success-number">&mdash;</strong>
+      has been saved, the material copied and the document generated.
+    </p>
+    <p class="modal-note" id="success-note"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary btn-inline" id="success-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="confirm-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h3 id="confirm-title">Confirm message number</h3>
+    <p class="modal-body-text">
+      This message will be saved as number
+      <strong class="modal-number" id="confirm-number">&mdash;</strong>.
+    </p>
+    <p class="modal-note" id="confirm-note"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost btn-inline" id="confirm-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary btn-inline" id="confirm-ok">Continue</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="draft-data" type="application/json">{{ draft|tojson }}</script>
+<script src="{{ url_for('static', filename='js/new_message.js') }}"></script>
+{% endblock %}
